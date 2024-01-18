@@ -1,0 +1,367 @@
+version: '3.7'
+
+services:
+
+  alluxio-master-1-azi:
+    user: root
+    image: 'alluxio/alluxio:2.9.3'
+    hostname: alluxio-master-1
+    container_name: alluxio-master-1-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.5
+    depends_on:
+      - minio-create-buckets-azi
+    volumes:
+      - alluxio-master-1-journal-data:/opt/alluxio/journal
+      - alluxio-master-1-metastore-data:/opt/alluxio/metastore
+      - ./config-files:/tmp/config-files:ro
+      - ./scripts/init-alluxio-node.sh:/scripts/init-alluxio-node.sh:ro
+    expose:
+      - 19998
+      - 19999
+      - 19200
+    ports:
+      - 19998:19998
+      - 19999:19999
+    entrypoint: >
+      /bin/sh -c "
+        /scripts/init-alluxio-node.sh
+        /entrypoint.sh master
+        sleep infinity
+        "
+
+  alluxio-master-2-azi:
+    user: root
+    image: 'alluxio/alluxio:2.9.3'
+    hostname: alluxio-master-2
+    container_name: alluxio-master-2-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.6
+    depends_on:
+      - minio-create-buckets-azi
+    volumes:
+      - alluxio-master-2-journal-data:/opt/alluxio/journal
+      - alluxio-master-2-metastore-data:/opt/alluxio/metastore
+      - ./config-files:/tmp/config-files:ro
+      - ./scripts/init-alluxio-node.sh:/scripts/init-alluxio-node.sh:ro
+    expose:
+      - 19998
+      - 19999
+      - 19200
+    entrypoint: >
+      /bin/sh -c "
+        /scripts/init-alluxio-node.sh
+        /entrypoint.sh master
+        sleep infinity
+        "
+
+  alluxio-master-3-azi:
+    user: root
+    image: 'alluxio/alluxio:2.9.3'
+    hostname: alluxio-master-3
+    container_name: alluxio-master-3-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.7
+    depends_on:
+      - minio-create-buckets-azi
+    volumes:
+      - alluxio-master-3-journal-data:/opt/alluxio/journal
+      - alluxio-master-3-metastore-data:/opt/alluxio/metastore
+      - ./config-files:/tmp/config-files:ro
+      - ./scripts/init-alluxio-node.sh:/scripts/init-alluxio-node.sh:ro
+    expose:
+      - 19998
+      - 19999
+      - 19200
+    entrypoint: >
+      /bin/sh -c "
+        /scripts/init-alluxio-node.sh
+        /entrypoint.sh master
+        sleep infinity
+        "
+
+  alluxio-worker-1-azi:
+    user: root
+    image: 'alluxio/alluxio:2.9.3'
+    hostname: alluxio-worker-1
+    container_name: alluxio-worker-1-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.11
+    shm_size: '512mb'
+    depends_on:
+      - alluxio-master-1-azi
+      - alluxio-master-2-azi
+      - alluxio-master-3-azi
+    volumes:
+      - ./config-files:/tmp/config-files:ro
+      - ./scripts/init-alluxio-node.sh:/scripts/init-alluxio-node.sh:ro
+    expose:
+      - 29999
+      - 30000
+      - 30001
+      - 30003
+      - 39999
+    ports:
+      - 29999:29999
+      - 30000:30000
+      - 39999:39999
+    entrypoint: >
+      /bin/sh -c "
+        /scripts/init-alluxio-node.sh
+        /entrypoint.sh worker
+        sleep infinity
+        "
+
+  alluxio-worker-2-azi:
+    user: root
+    image: 'alluxio/alluxio:2.9.3'
+    hostname: alluxio-worker-2
+    container_name: alluxio-worker-2-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.12
+    shm_size: '512mb'
+    depends_on:
+      - alluxio-master-1-azi
+      - alluxio-master-2-azi
+      - alluxio-master-3-azi
+    volumes:
+      - ./config-files:/tmp/config-files:ro
+      - ./scripts/init-alluxio-node.sh:/scripts/init-alluxio-node.sh:ro
+    expose:
+      - 29999
+      - 30000
+      - 30001
+      - 30003
+      - 39999
+    entrypoint: >
+      /bin/sh -c "
+        /scripts/init-alluxio-node.sh
+        /entrypoint.sh worker
+        sleep infinity
+        "
+
+  trino-coordinator-azi:
+    image: 'trinodb/trino:431'
+    hostname: trino-coordinator
+    container_name: trino-coordinator-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.15
+    volumes:
+      - trino-coordinator-data:/data
+    expose:
+      - 8080
+    ports:
+      - '8080:8080'
+    command:
+      - /bin/bash
+      - -c
+      - |
+        sed -i "s/coordinator=false/coordinator=true/" /etc/trino/config.properties
+        sed -i "s/node-scheduler.include-coordinator=true/node-scheduler.include-coordinator=false/" /etc/trino/config.properties
+        /usr/lib/trino/bin/run-trino
+        sleep infinity
+
+  trino-worker-1-azi:
+    image: 'trinodb/trino:431'
+    hostname: trino-worker-1
+    container_name: trino-worker-1-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.16
+    volumes:
+      - trino-worker-1-data:/data
+    command:
+      - /bin/bash
+      - -c
+      - |
+        sed -i "s/coordinator=true/coordinator=false/" /etc/trino/config.properties
+        sed -i "s/node-scheduler.include-coordinator=true/node-scheduler.include-coordinator=false/" /etc/trino/config.properties
+        echo "discovery.uri=http://trino-coordinator:8080" >> /etc/trino/config.properties
+        /usr/lib/trino/bin/run-trino
+        sleep infinity
+
+  spark-master-azi:
+    image: docker.io/bitnami/spark:3.3
+    hostname: spark-master
+    container_name: spark-master-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.20
+    volumes:
+      - spark-master-data:/data
+    ports:
+      - 8081:8080
+    expose:
+      - 8081
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    command:
+      - /bin/sh
+      - -c 
+      - |
+        echo "spark.hadoop.hive.metastore.uris=thrift://hive-metastore:9083" >> /opt/bitnami/spark/conf/spark-defaults.conf
+        /opt/bitnami/scripts/spark/run.sh
+        sleep infinity
+
+  spark-worker-1-azi:
+    image: docker.io/bitnami/spark:3.3
+    hostname: spark-worker
+    container_name: spark-worker-1-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.24
+    volumes:
+      - spark-worker-1-data:/data
+    ports:
+      - 8082:8081
+    expose:
+      - 8082
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    command:
+      - /bin/sh
+      - -c 
+      - |
+        echo "spark.hadoop.hive.metastore.uris=thrift://hive-metastore:9083" >> /opt/bitnami/spark/conf/spark-defaults.conf
+        /opt/bitnami/scripts/spark/run.sh
+        sleep infinity
+
+  hive-metastore-azi:
+    image: 'bitsondatadev/hive-metastore:latest'
+    hostname: hive-metastore
+    container_name: hive-metastore-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.4
+    ports:
+      - '9083:9083' # Metastore Thrift
+    volumes:
+      - ./config-files:/tmp/config-files:ro
+      - hive-metastore-data:/data
+    environment:
+      METASTORE_DB_HOSTNAME: mariadb
+    depends_on:
+      - mariadb-azi
+      - minio-azi
+    entrypoint: >
+      /bin/sh -c "
+        cp /tmp/config-files/hive/metastore-site.xml \
+           /opt/apache-hive-metastore-3.0.0-bin/conf/metastore-site.xml
+        /entrypoint.sh
+        sleep infinity
+        "
+
+  minio-azi:
+    image: 'minio/minio:latest'
+    hostname: minio
+    container_name: minio-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.3
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-data:/data
+    environment:
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: minio123
+    command: server --console-address ":9001" /data
+
+  mariadb-azi:
+    image: 'mariadb:latest'
+    hostname: mariadb
+    container_name: mariadb-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.2
+    expose:
+      - 3306
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_DATABASE: metastore_db
+    volumes:
+      - mariadb-data:/var/lib/mysql
+
+  minio-create-buckets-azi:
+    image: minio/mc:latest
+    container_name: minio-create-buckets-azi
+    networks:
+      custom:
+        ipv4_address: 173.23.0.25
+    depends_on:
+      - minio-azi
+    environment:
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: minio123
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc config host add myminio http://minio:9000 minio minio123;
+      if [ \"`/usr/bin/mc ls myminio`\" == \"\" ]; then 
+         echo \"Creating bucket myminio/hive\" && \
+         /usr/bin/mc mb myminio/minio-bucket1 && \
+         /usr/bin/mc policy download myminio/minio-bucket1 && \
+         curl -O https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2023-01.parquet
+         /usr/bin/mc cp ./yellow_tripdata_2023-01.parquet myminio/minio-bucket1/hive/warehouse/nyc-taxi/yellow_tripdata_2023-01.parquet; 
+      else 
+         echo \"Bucket myminio/hive already exists, skipping create\"; 
+      fi;
+      exit 0
+      "
+
+volumes:
+
+  alluxio-master-1-journal-data:
+    driver: local
+  alluxio-master-1-metastore-data:
+    driver: local
+  alluxio-master-2-journal-data:
+    driver: local
+  alluxio-master-2-metastore-data:
+    driver: local
+  alluxio-master-3-journal-data:
+    driver: local
+  alluxio-master-3-metastore-data:
+    driver: local
+  trino-coordinator-data:
+    driver: local
+  trino-worker-1-data:
+    driver: local
+  spark-master-data:
+    driver: local
+  spark-worker-1-data:
+    driver: local
+  hive-metastore-data:
+    driver: local
+  mariadb-data:
+    driver: local
+  minio-data:
+    driver: local
+
+networks:
+  custom:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 173.23.0.0/16
